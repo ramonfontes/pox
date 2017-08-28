@@ -37,11 +37,12 @@ from packet_utils import *
 from dhcp import *
 from dns  import *
 from rip  import *
+from radius import *
 
 from packet_base import packet_base
 
 # We grab ipv4 later to prevent cyclic dependency
-#_ipv4 = None
+# _ipv4 = None
 
 class udp(packet_base):
     "UDP packet struct"
@@ -49,8 +50,8 @@ class udp(packet_base):
     MIN_LEN = 8
 
     def __init__(self, raw=None, prev=None, **kw):
-        #global _ipv4
-        #if not _ipv4:
+        # global _ipv4
+        # if not _ipv4:
         #  from ipv4 import ipv4
         #  _ipv4 = ipv4
 
@@ -82,8 +83,8 @@ class udp(packet_base):
             return
 
         (self.srcport, self.dstport, self.len, self.csum) \
-            = struct.unpack('!HHHH', raw[:udp.MIN_LEN])
-
+ = struct.unpack('!HHHH', raw[:udp.MIN_LEN])
+ 
         self.hdr_len = udp.MIN_LEN
         self.payload_len = self.len - self.hdr_len
         self.parsed = True
@@ -92,28 +93,28 @@ class udp(packet_base):
             self.msg('(udp parse) warning invalid UDP len %u' % self.len)
             return
 
-        #TODO: DHCPv6, etc.
-
+        # TODO: DHCPv6, etc.
         if (self.dstport == dhcp.SERVER_PORT
                     or self.dstport == dhcp.CLIENT_PORT):
-            self.next = dhcp(raw=raw[udp.MIN_LEN:],prev=self)
+            self.next = dhcp(raw=raw[udp.MIN_LEN:], prev=self)
         elif (self.dstport == dns.SERVER_PORT
                     or self.srcport == dns.SERVER_PORT):
-            self.next = dns(raw=raw[udp.MIN_LEN:],prev=self)
+            self.next = dns(raw=raw[udp.MIN_LEN:], prev=self)
         elif (self.dstport == dns.MDNS_PORT
                     or self.srcport == dns.MDNS_PORT):
-            self.next = dns(raw=raw[udp.MIN_LEN:],prev=self)
-        elif ( (self.dstport == rip.RIP_PORT
-                or self.srcport == rip.RIP_PORT) ):
+            self.next = dns(raw=raw[udp.MIN_LEN:], prev=self)
+        elif ((self.dstport == rip.RIP_PORT
+                or self.srcport == rip.RIP_PORT)):
 #               and isinstance(self.prev, _ipv4)
 #               and self.prev.dstip == rip.RIP2_ADDRESS ):
-            self.next = rip(raw=raw[udp.MIN_LEN:],prev=self)
+            self.next = rip(raw=raw[udp.MIN_LEN:], prev=self)
+        elif self.dstport == radius.RADIUS_PORT:
+            self.next = radius(raw=raw[udp.MIN_LEN:], prev=self)
         elif dlen < self.len:
             self.msg('(udp parse) warning UDP packet data shorter than UDP len: %u < %u' % (dlen, self.len))
             return
         else:
             self.payload = raw[udp.MIN_LEN:]
-
 
     def hdr(self, payload):
         self.len = len(payload) + udp.MIN_LEN
@@ -128,13 +129,13 @@ class udp(packet_base):
         """
 
         ip_ver = None
-        if self.prev.__class__.__name__  == 'ipv4':
+        if self.prev.__class__.__name__ == 'ipv4':
           ip_ver = 4
-        elif self.prev.__class__.__name__  == 'ipv6':
+        elif self.prev.__class__.__name__ == 'ipv6':
           ip_ver = 6
         else:
-          self.msg('packet not in IP; cannot calculate checksum ' +
-                    'over psuedo-header' )
+          self.msg('packet not in IP; cannot calculate checksum ' + 
+                    'over psuedo-header')
           return 0
 
         if unparsed:
