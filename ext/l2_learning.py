@@ -27,7 +27,6 @@ from pox.lib.addresses import IPAddr, IPAddr6, EthAddr
 from pox.lib.util import dpid_to_str
 from pox.lib.util import str_to_bool
 import time
-
 log = core.getLogger()
 
 # We don't want to flood immediately when a switch connects.
@@ -76,11 +75,12 @@ class LearningSwitch (object):
      flow goes out the appopriate port
      6a) Send the packet out appropriate port
   """
-  def __init__ (self, connection, transparent):
+  def __init__ (self, connection, transparent, radius):
     # Switch we'll be adding L2 learning switch capabilities to
     self.connection = connection
     self.transparent = transparent
     self.flow_added = True
+    self.radius = radius
     # Our table
     self.macToPort = {}
 
@@ -98,7 +98,7 @@ class LearningSwitch (object):
     """
     Handle packet in messages from the switch to implement above algorithm.
     """
-    if self.flow_added:
+    if self.flow_added and self.radius:
         for connection in core.openflow.connections: # _connections.values() before betta
             #print ("Clearing all flows from %s." % (dpid_to_str(connection.dpid),))
             msg = of.ofp_flow_mod()
@@ -122,14 +122,12 @@ class LearningSwitch (object):
     #if packet.find("radius"):
     #    print ("udp found: %s", packet.find("ethernet").src)
     #    print ("udp found: %s:%s to %s:%s", packet.find("ipv4").srcip, packet.find("udp").srcport, packet.find("ipv4").dstip, packet.find("udp").dstport)
-    if packet.find("udp"):
+    if packet.find("udp") and self.radius:
         for connection in core.openflow.connections: # _connections.values() before betta
             #connection.send(msg)
             if len(radius.mac_) == 1:
-                print radius.name_
-                print radius.mac_
                 if 'bob' == radius.rule1[radius.mac_[0]] and radius.mac_[0] not in radius.rule:
-                    print "Dropping packets from %s to h4" %  radius.mac_[0]
+                    log.info("Dropping packets from %s to h4" %  radius.mac_[0])
                     msg = of.ofp_flow_mod()
                     msg.priority = 65535
                     msg.match.in_port = 2
@@ -140,7 +138,7 @@ class LearningSwitch (object):
                     connection.send(msg)
                     radius.rule.append(radius.mac_[0])
                 if 'joe' == radius.rule1[radius.mac_[0]] and radius.mac_[0] not in radius.rule:
-                    print "Dropping packets from %s to h5" %  radius.mac_[0]
+                    log.info("Dropping packets from %s to h5" %  radius.mac_[0])
                     msg = of.ofp_flow_mod()
                     msg.priority = 65535
                     msg.match.in_port = 2
@@ -230,26 +228,27 @@ class LearningSwitch (object):
 
 
 class l2_learning (object):
-  """
-  Waits for OpenFlow switches to connect and makes them learning switches.
-  """
-  def __init__ (self, transparent):
-    core.openflow.addListeners(self)
-    self.transparent = transparent
+    """
+    Waits for OpenFlow switches to connect and makes them learning switches.
+    """
+    def __init__ (self, transparent, radius):
+        core.openflow.addListeners(self)
+        self.transparent = transparent
+        self.radius = radius
 
-  def _handle_ConnectionUp (self, event):
-    log.debug("Connection %s" % (event.connection,))
-    LearningSwitch(event.connection, self.transparent)
+    def _handle_ConnectionUp (self, event):
+        log.debug("Connection %s" % (event.connection,))
+        LearningSwitch(event.connection, self.transparent, self.radius)
 
 
-def launch (transparent=False, hold_down=_flood_delay):
-  """
-  Starts an L2 learning switch.
-  """
-  try:
-    global _flood_delay
-    _flood_delay = int(str(hold_down), 10)
-    assert _flood_delay >= 0
-  except:
-    raise RuntimeError("Expected hold-down to be a number")
-  core.registerNew(l2_learning, str_to_bool(transparent))
+def launch (transparent=False, hold_down=_flood_delay, radius=False):
+    """
+    Starts an L2 learning switch.
+    """
+    try:
+        global _flood_delay
+        _flood_delay = int(str(hold_down), 10)
+        assert _flood_delay >= 0
+    except:
+        raise RuntimeError("Expected hold-down to be a number")
+    core.registerNew(l2_learning, str_to_bool(transparent), radius)
